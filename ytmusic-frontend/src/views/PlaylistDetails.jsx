@@ -16,7 +16,7 @@ export default function PlaylistDetails({ playlistId, onBack, onPlaylistDeleted 
     setLoading(true)
     setError('')
     try {
-      const res = await fetch(`http://localhost:8000/api/playlists/${playlistId}`, {
+      const res = await fetch(`${window.API_BASE}/playlists/${playlistId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       if (res.ok) {
@@ -40,7 +40,7 @@ export default function PlaylistDetails({ playlistId, onBack, onPlaylistDeleted 
   const handleDeletePlaylist = async () => {
     if (!window.confirm("Are you sure you want to delete this playlist? This action cannot be undone.")) return
     try {
-      const res = await fetch(`http://localhost:8000/api/playlists/${playlistId}`, {
+      const res = await fetch(`${window.API_BASE}/playlists/${playlistId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       })
@@ -55,7 +55,7 @@ export default function PlaylistDetails({ playlistId, onBack, onPlaylistDeleted 
   const handleRemoveSong = async (e, videoId) => {
     e.stopPropagation()
     try {
-      const res = await fetch(`http://localhost:8000/api/playlists/${playlistId}/songs/${videoId}`, {
+      const res = await fetch(`${window.API_BASE}/playlists/${playlistId}/songs/${videoId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       })

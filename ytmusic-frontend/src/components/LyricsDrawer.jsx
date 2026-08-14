@@ -15,7 +15,7 @@ export default function LyricsDrawer() {
     setLyrics('')
     setLoading(true)
 
-    fetch(`http://localhost:8000/api/music/lyrics/${trackId}`)
+    fetch(`${window.API_BASE}/music/lyrics/${trackId}`)
       .then(res => res.json())
       .then(data => {
         setLyrics(data.lyrics || "No lyrics found for this track.")

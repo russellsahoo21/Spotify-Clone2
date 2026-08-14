@@ -21,7 +21,7 @@ export default function SearchResults({ playlists = [], onPlaylistUpdated }) {
     setLoading(true)
     setError('')
     try {
-      const res = await fetch(`http://localhost:8000/api/music/search?q=${encodeURIComponent(query)}`)
+      const res = await fetch(`${window.API_BASE}/music/search?q=${encodeURIComponent(query)}`)
       if (res.ok) {
         const data = await res.json()
         setResults(data)
@@ -47,7 +47,7 @@ export default function SearchResults({ playlists = [], onPlaylistUpdated }) {
     const trackId = track.id || track.video_id
 
     try {
-      const res = await fetch(`http://localhost:8000/api/playlists/${playlistId}/songs`, {
+      const res = await fetch(`${window.API_BASE}/playlists/${playlistId}/songs`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

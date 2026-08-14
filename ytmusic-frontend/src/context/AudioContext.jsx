@@ -1,8 +1,8 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react'
 import { useAuth } from './AuthContext'
+import { API_BASE } from '../config'
 
 const AudioContext = createContext(null)
-const API_BASE = "http://localhost:8000/api"
 
 export function AudioProvider({ children }) {
   const { token } = useAuth()

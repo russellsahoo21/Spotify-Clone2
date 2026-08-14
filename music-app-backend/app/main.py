@@ -2,15 +2,16 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.config import CORS_ORIGINS
 from app.database import Base, engine
 from app.routers import auth, explore, library, playlists, search, songs, youtube_sync
 
 app = FastAPI(title="StreamYT Unified API Gateway")
 
-# Enable CORS for local React frontend development
+# Enable CORS for React frontend development and production
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust for production
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

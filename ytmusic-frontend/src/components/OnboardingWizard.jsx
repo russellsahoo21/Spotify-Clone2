@@ -67,7 +67,7 @@ export default function OnboardingWizard({ token, onComplete }) {
     setSaving(true)
 
     try {
-      const res = await fetch('http://localhost:8000/api/auth/onboarding', {
+      const res = await fetch(`${window.API_BASE}/auth/onboarding`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

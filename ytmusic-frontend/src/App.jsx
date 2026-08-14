@@ -69,7 +69,7 @@ function AppContent() {
     setSidebarLyrics('')
     setSidebarLyricsLoading(true)
 
-    fetch(`http://localhost:8000/api/music/lyrics/${trackId}`)
+    fetch(`${window.API_BASE}/music/lyrics/${trackId}`)
       .then(res => res.json())
       .then(data => {
         setSidebarLyrics(data.lyrics || "No lyrics found for this track.")
@@ -247,7 +247,7 @@ function AppContent() {
   useEffect(() => {
     async function fetchExplore() {
       try {
-        const res = await fetch('http://localhost:8000/api/explore')
+        const res = await fetch(`${window.API_BASE}/explore`)
         if (res.ok) {
           const data = await res.json()
           setTrending(data.trending || [])
@@ -271,7 +271,7 @@ function AppContent() {
   const fetchPlaylists = async () => {
     if (!token) return
     try {
-      const res = await fetch('http://localhost:8000/api/playlists', {
+      const res = await fetch(`${window.API_BASE}/playlists`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       if (res.ok) {
@@ -300,7 +300,7 @@ function AppContent() {
       return
     }
     try {
-      const res = await fetch('http://localhost:8000/api/playlists', {
+      const res = await fetch(`${window.API_BASE}/playlists`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -330,7 +330,7 @@ function AppContent() {
 
     alert("Playlist import started in the background. Tracks will import shortly...")
     try {
-      const res = await fetch('http://localhost:8000/api/youtube/import', {
+      const res = await fetch(`${window.API_BASE}/youtube/import`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

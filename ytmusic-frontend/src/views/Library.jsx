@@ -21,7 +21,7 @@ export default function Library({
     if (!token) return
     setLoading(true)
     try {
-      const res = await fetch('http://localhost:8000/api/library/favorites', {
+      const res = await fetch(`${window.API_BASE}/library/favorites`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       if (res.ok) {
@@ -38,7 +38,7 @@ export default function Library({
     if (!token) return
     setLoading(true)
     try {
-      const res = await fetch('http://localhost:8000/api/library/history', {
+      const res = await fetch(`${window.API_BASE}/library/history`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       if (res.ok) {
@@ -62,7 +62,7 @@ export default function Library({
   const handleRemoveFavorite = async (e, videoId) => {
     e.stopPropagation()
     try {
-      const res = await fetch(`http://localhost:8000/api/library/favorites/${videoId}`, {
+      const res = await fetch(`${window.API_BASE}/library/favorites/${videoId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       })
@@ -96,7 +96,7 @@ export default function Library({
   const handleClearHistory = async () => {
     if (!window.confirm("Are you sure you want to clear your listening history? This cannot be undone.")) return
     try {
-      const res = await fetch('http://localhost:8000/api/library/history', {
+      const res = await fetch(`${window.API_BASE}/library/history`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       })

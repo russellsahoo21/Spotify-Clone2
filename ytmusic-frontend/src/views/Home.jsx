@@ -369,7 +369,7 @@ export default function Home({
   useEffect(() => {
     if (activeFilter === 'podcasts' && podcasts.shows.length === 0) {
       setPodcastsLoading(true)
-      fetch('http://localhost:8000/api/explore/podcasts')
+      fetch(`${window.API_BASE}/explore/podcasts`)
         .then(res => {
           if (res.ok) return res.json()
           throw new Error('Failed to load podcasts')
@@ -389,7 +389,7 @@ export default function Home({
   // Helper function to query a page from the dynamic infinite endpoint
   const fetchFeedPage = async (pageNum) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/explore/infinite-feed?page=${pageNum}`, {
+      const res = await fetch(`${window.API_BASE}/explore/infinite-feed?page=${pageNum}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -422,7 +422,7 @@ export default function Home({
     async function fetchMoodSongs() {
       setMoodLoading(true)
       try {
-        const res = await fetch(`http://localhost:8000/api/explore/mood?mood=${encodeURIComponent(selectedMood)}`)
+        const res = await fetch(`${window.API_BASE}/explore/mood?mood=${encodeURIComponent(selectedMood)}`)
         if (res.ok) {
           const data = await res.json()
           setMoodSongs(data || [])
@@ -565,7 +565,7 @@ export default function Home({
                     key={show.id}
                     onClick={async () => {
                       try {
-                        const res = await fetch(`http://localhost:8000/api/explore/playlist-tracks?id=${show.id}`)
+                        const res = await fetch(`${window.API_BASE}/explore/playlist-tracks?id=${show.id}`)
                         if (res.ok) {
                           const data = await res.json()
                           if (data.length > 0) {
