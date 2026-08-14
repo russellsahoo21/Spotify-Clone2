@@ -8,3 +8,5 @@ python-jose[cryptography]
 httpx
 ytmusicapi
 psycopg2-binary
+email-validator
+
