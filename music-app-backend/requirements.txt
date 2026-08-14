@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+pydantic
+python-dotenv
+bcrypt
+python-jose[cryptography]
+httpx
+ytmusicapi
+psycopg2-binary
