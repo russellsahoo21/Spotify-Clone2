@@ -9,10 +9,12 @@ from app.routers import auth, explore, library, playlists, search, songs, youtub
 app = FastAPI(title="StreamYT Unified API Gateway")
 
 # Enable CORS for React frontend development and production
+# allow_credentials cannot be True if allow_origins contains "*"
+allow_credentials = "*" not in CORS_ORIGINS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
-    allow_credentials=True,
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
