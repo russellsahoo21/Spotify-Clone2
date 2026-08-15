@@ -5,6 +5,9 @@ import { useEffect, useState, useCallback } from 'react';
 import { View, Dimensions, ActivityIndicator } from 'react-native';
 import 'react-native-reanimated';
 
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { Audio } from 'expo-av';
+
 import { useColorScheme } from '../hooks/use-color-scheme';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { AudioProvider, useAudio } from '../context/AudioContext';
@@ -21,11 +24,13 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <AudioProvider>
-        <AppContent />
-      </AudioProvider>
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <AudioProvider>
+          <AppContent />
+        </AudioProvider>
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }
 
@@ -44,6 +49,22 @@ function AppContent() {
 
   const segments = useSegments();
   const router = useRouter();
+
+  // Configure global background audio mode (iOS stays active in silent/background mode)
+  useEffect(() => {
+    async function configureAudio() {
+      try {
+        await Audio.setAudioModeAsync({
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: true,
+          playThroughEarpieceAndroid: false,
+        });
+      } catch (err) {
+        console.error("Failed to configure background audio mode:", err);
+      }
+    }
+    configureAudio();
+  }, []);
 
   // Redirect based on auth state
   useEffect(() => {

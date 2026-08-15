@@ -1,8 +1,16 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { Home, Search, Library } from 'lucide-react-native';
+import { Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+  
+  // Account for system navigation bar dynamic heights in edge-to-edge mode
+  const paddingBottom = insets.bottom > 0 ? insets.bottom : (Platform.OS === 'ios' ? 30 : 10);
+  const tabHeight = 50 + paddingBottom;
+
   return (
     <Tabs
       screenOptions={{
@@ -12,8 +20,8 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: '#09090b',
           borderTopColor: '#18181b',
-          height: Platform.OS === 'ios' ? 88 : 60,
-          paddingBottom: Platform.OS === 'ios' ? 30 : 10,
+          height: tabHeight,
+          paddingBottom: paddingBottom,
           paddingTop: 10,
           position: 'absolute',
           bottom: 0,
@@ -46,5 +54,3 @@ export default function TabLayout() {
     </Tabs>
   );
 }
-
-import { Platform } from 'react-native';

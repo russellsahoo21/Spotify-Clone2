@@ -135,7 +135,7 @@ export default function LibraryScreen() {
       </View>
 
       {/* Main Tab Views Scroll */}
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+      <ScrollView className="flex-1" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 180 }}>
 
         {/* PLAYLISTS TAB VIEW */}
         {activeTab === 'playlists' && (

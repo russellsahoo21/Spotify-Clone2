@@ -111,7 +111,7 @@ export default function SearchScreen() {
       )}
 
       {/* Results View Container */}
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+      <ScrollView className="flex-1" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 180 }}>
 
         {loading && (
           <ActivityIndicator size="small" color="#d91b29" className="my-6" />

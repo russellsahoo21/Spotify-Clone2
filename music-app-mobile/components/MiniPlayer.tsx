@@ -1,10 +1,14 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, Image } from 'react-native';
+import { View, Text, TouchableOpacity, Image, Platform } from 'react-native';
 import { useAudio } from '../context/AudioContext';
 import { Play, Pause, SkipForward } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSegments } from 'expo-router';
 
 export default function MiniPlayer() {
   const { currentTrack, isPlaying, togglePlay, nextTrack, setPlayerOpen } = useAudio();
+  const insets = useSafeAreaInsets();
+  const segments = useSegments();
 
   if (!currentTrack) return null;
 
@@ -12,13 +16,23 @@ export default function MiniPlayer() {
   const trackArtist = currentTrack.artist || "Unknown Artist";
   const trackImage = currentTrack.thumbnail || currentTrack.thumbnail_url || "https://images.unsplash.com/photo-1614680376593-902f74fa0d41?w=120&h=120&fit=crop&q=80";
 
+  // Determine if the tab bar is visible (active screen is in the (tabs) folder)
+  const inTabGroup = segments[0] === '(tabs)';
+
+  // Calculate dynamic bottom tab bar height
+  const tabBottomPadding = insets.bottom > 0 ? insets.bottom : (Platform.OS === 'ios' ? 30 : 10);
+  const tabHeight = 50 + tabBottomPadding;
+
+  // Position MiniPlayer above tab bar if inTabGroup, otherwise above device's bottom safe area
+  const bottomOffset = inTabGroup ? tabHeight + 8 : (insets.bottom > 0 ? insets.bottom + 8 : 16);
+
   return (
     <TouchableOpacity
       activeOpacity={0.9}
       onPress={() => setPlayerOpen(true)}
       style={{
         position: 'absolute',
-        bottom: 52,
+        bottom: bottomOffset,
         left: 8,
         right: 8,
         backgroundColor: 'rgba(24, 24, 27, 0.96)',

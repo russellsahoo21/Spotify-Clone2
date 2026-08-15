@@ -138,7 +138,7 @@ export default function HomeScreen() {
       showsVerticalScrollIndicator={false}
       onScroll={handleScroll}
       scrollEventThrottle={400}
-      contentContainerStyle={{ paddingBottom: 120, paddingTop: 60 }}
+      contentContainerStyle={{ paddingBottom: 180, paddingTop: 60 }}
     >
 
       {/* Header bar */}
