@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, Alert, Platform } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
 import { useAudio } from '../context/AudioContext';
@@ -15,7 +15,7 @@ export default function PlaylistDetailsScreen() {
   const [playlist, setPlaylist] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchPlaylistDetails = async () => {
+  const fetchPlaylistDetails = useCallback(async () => {
     if (!token || !id) return;
     setLoading(true);
     try {
@@ -31,11 +31,11 @@ export default function PlaylistDetailsScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id, token]);
 
   useEffect(() => {
     fetchPlaylistDetails();
-  }, [id, token]);
+  }, [fetchPlaylistDetails]);
 
   const handlePlayAll = () => {
     if (!playlist || !playlist.songs || playlist.songs.length === 0) return;

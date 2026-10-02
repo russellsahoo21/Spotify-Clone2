@@ -2,6 +2,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from ytmusicapi import YTMusic
+from app.services.track_filter import is_music_track
 
 app = FastAPI(title="YT Music API Gateway")
 
@@ -24,6 +25,8 @@ def search_music(q: str = Query(..., min_length=1)):
         results = yt.search(query=q, filter="songs")
         formatted_results = []
         for item in results:
+            if not is_music_track(item):
+                continue
             video_id = item.get("videoId")
             if not video_id:
                 continue
@@ -52,6 +55,8 @@ def get_recommendations(video_id: str):
         tracks = watch_playlist.get("tracks", [])
         formatted_tracks = []
         for track in tracks:
+            if not is_music_track(track):
+                continue
             track_id = track.get("videoId")
             if not track_id:
                 continue

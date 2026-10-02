@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAudio } from '../context/AudioContext';
 import { ChevronLeft, Play, Sparkles } from 'lucide-react-native';
 import { API_BASE } from '../constants/api';
 
 export default function MixDetailsScreen() {
-  const { id, name } = useLocalSearchParams();
+  const { name } = useLocalSearchParams();
   const { playTrack } = useAudio();
   const router = useRouter();
 

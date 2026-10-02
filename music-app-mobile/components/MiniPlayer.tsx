@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSegments } from 'expo-router';
 
 export default function MiniPlayer() {
-  const { currentTrack, isPlaying, togglePlay, nextTrack, setPlayerOpen } = useAudio();
+  const { currentTrack, isPlaying, playbackError, togglePlay, nextTrack, setPlayerOpen } = useAudio();
   const insets = useSafeAreaInsets();
   const segments = useSegments();
 
@@ -60,8 +60,8 @@ export default function MiniPlayer() {
           <Text className="text-white text-xs font-bold font-sans" numberOfLines={1}>
             {trackTitle}
           </Text>
-          <Text className="text-zinc-400 text-[10px] font-sans mt-0.5" numberOfLines={1}>
-            {trackArtist}
+          <Text className={`${playbackError ? 'text-red-400' : 'text-zinc-400'} text-[10px] font-sans mt-0.5`} numberOfLines={playbackError ? 2 : 1}>
+            {playbackError || trackArtist}
           </Text>
         </View>
       </View>

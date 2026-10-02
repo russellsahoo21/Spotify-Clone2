@@ -12,7 +12,6 @@
       "supportsTablet": true,
       "infoPlist": {
         "UIBackgroundModes": [
-          "audio",
           "audio"
         ],
         "ITSAppUsesNonExemptEncryption": false
@@ -53,7 +52,8 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      ["expo-audio", { "microphonePermission": false, "recordAudioAndroid": false }]
     ],
     "experiments": {
       "typedRoutes": true,

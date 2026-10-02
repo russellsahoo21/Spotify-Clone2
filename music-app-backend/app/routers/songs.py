@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from ytmusicapi import YTMusic
+from app.services.track_filter import is_music_track
 
 router = APIRouter()
 yt = YTMusic()
@@ -13,6 +14,8 @@ def get_recommendations(video_id: str):
         tracks = watch_playlist.get("tracks", [])
         formatted_tracks = []
         for track in tracks:
+            if not is_music_track(track):
+                continue
             track_id = track.get("videoId")
             if not track_id:
                 continue
@@ -30,7 +33,7 @@ def get_recommendations(video_id: str):
                     "album": track.get("album", {}).get("name")
                     if track.get("album")
                     else None,
-                    "duration": track.get("duration"),
+                    "duration": track.get("duration") or track.get("length"),
                     "thumbnail": thumbnail_url,
                 }
             )

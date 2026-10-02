@@ -1,9 +1,50 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { Platform } from 'react-native';
 import { useAuth } from './AuthContext';
 import { API_BASE } from '../constants/api';
+import { Alert, AppState, Platform } from 'react-native';
+import { randomUUID } from 'expo-crypto';
+import NativeAudioPlayer from '../components/NativeAudioPlayer';
+import { createListeningProgress, measureListening, resetListeningPosition } from '../utils/listening-session';
 
 const AudioContext = createContext<any>(null);
+
+const AD_TEXT_RE = /\b(ad|ads|advert|advertisement|sponsored|sponsor|promo|promoted|commercial|yt\s*ad|youtube\s*ad|skip\s*ad|includes\s*paid\s*promotion)\b/i;
+const MUSIC_DURATION_RE = /^\d{1,2}:\d{2}(?::\d{2})?$/;
+
+function normalizeTrack(track: any) {
+  if (!track) return null;
+  const videoId = track.id || track.video_id || track.videoId;
+  if (!videoId) return null;
+  return { ...track, id: videoId, video_id: videoId };
+}
+
+function isPlayableMusicTrack(track: any) {
+  const normalizedTrack = normalizeTrack(track);
+  if (!normalizedTrack) return false;
+
+  const text = [
+    normalizedTrack.title,
+    normalizedTrack.artist,
+    normalizedTrack.author,
+    normalizedTrack.description,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  if (AD_TEXT_RE.test(text)) return false;
+
+  if (normalizedTrack.duration && !MUSIC_DURATION_RE.test(String(normalizedTrack.duration))) {
+    return false;
+  }
+
+  return true;
+}
+
+function normalizePlayableQueue(tracks: any[]) {
+  return tracks
+    .map(normalizeTrack)
+    .filter((track: any) => track && isPlayableMusicTrack(track));
+}
 
 export function AudioProvider({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
@@ -20,6 +61,19 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const [history, setHistory] = useState<any[]>([]);
   const [isVideoMode, setIsVideoMode] = useState(false);
   const [playerOpen, setPlayerOpen] = useState(false);
+  const [sleepTimerMinutes, setSleepTimerMinutes] = useState<number | null>(null);
+  const [sleepTimerEndsAt, setSleepTimerEndsAt] = useState<number | null>(null);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [playbackAttempt, setPlaybackAttempt] = useState(0);
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  const [recommendationsRevision, setRecommendationsRevision] = useState(0);
+  const listeningSession = useRef<any>(null);
+  const queueRef = useRef(queue);
+  queueRef.current = queue;
+  const queueGeneration = useRef(0);
+  const currentToken = useRef(token);
+  currentToken.current = token;
+  const nativePlayback = Platform.OS !== 'web' && !isVideoMode;
 
   // Native player references
   const playerRef = useRef<any>(null);
@@ -27,14 +81,17 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   // Progress tracker interval
   useEffect(() => {
     let interval: any;
-    if (isPlaying && playerRef.current) {
+    let cancelled = false;
+    if (isPlaying && !nativePlayback && playerRef.current) {
       interval = setInterval(async () => {
         try {
           const time = await playerRef.current.getCurrentTime();
+          if (cancelled) return;
           if (typeof time === 'number') {
             setProgress(time);
           }
           const dur = await playerRef.current.getDuration();
+          if (cancelled) return;
           if (typeof dur === 'number' && dur > 0) {
             setDuration(dur);
           }
@@ -44,9 +101,33 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       }, 500);
     }
     return () => {
+      cancelled = true;
       if (interval) clearInterval(interval);
     };
-  }, [isPlaying, currentTrack]);
+  }, [isPlaying, currentTrack, nativePlayback]);
+
+  useEffect(() => {
+    if (!sleepTimerEndsAt) return;
+
+    const expire = () => {
+      if (Date.now() < sleepTimerEndsAt) return;
+      playerRef.current?.pause?.();
+      setIsPlaying(false);
+      setSleepTimerMinutes(null);
+      setSleepTimerEndsAt(null);
+    };
+    const timeout = setTimeout(expire, Math.max(0, sleepTimerEndsAt - Date.now()));
+    const subscription = AppState.addEventListener('change', expire);
+
+    return () => {
+      clearTimeout(timeout);
+      subscription.remove();
+    };
+  }, [sleepTimerEndsAt]);
+
+  useEffect(() => {
+    setPlaybackError(null);
+  }, [currentTrack, isVideoMode]);
 
   // Load favorites and history on startup/token change
   const fetchFavorites = async () => {
@@ -122,6 +203,8 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       if (!res.ok) {
         // Rollback
         fetchFavorites();
+      } else if (currentToken.current === token) {
+        setRecommendationsRevision(value => value + 1);
       }
     } catch (err) {
       console.error("Failed to toggle favorite:", err);
@@ -153,23 +236,111 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const sendListening = (outcome: 'progress' | 'skip' | 'complete') => {
+    const session = listeningSession.current;
+    if (!session || session.token !== token || session.measurement.seconds < 2) return;
+    session.reportedSeconds = session.measurement.seconds;
+    void fetch(`${API_BASE}/recommendations/listening`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token}` },
+      body: JSON.stringify({
+        session_id: session.id, video_id: session.track.id,
+        title: String(session.track.title || 'Unknown Song').slice(0, 255),
+        artist: String(session.track.artist || '').slice(0, 255),
+        thumbnail_url: session.track.thumbnail || session.track.thumbnail_url || null,
+        duration: session.track.duration ? String(session.track.duration) : null,
+        listened_seconds: Math.min(86400, session.measurement.seconds),
+        duration_seconds: Math.min(86400, session.duration || 0), outcome,
+      }),
+    }).catch(() => {});
+  };
+
+  const beginListening = (track: any) => {
+    listeningSession.current = {
+      id: randomUUID(), token, track, duration: 0, reportedSeconds: 0, historyLogged: false,
+      measurement: createListeningProgress(Date.now()),
+    };
+  };
+
+  useEffect(() => {
+    const session = listeningSession.current;
+    if (!session || session.token !== token || session.track.id !== currentTrack?.id) return;
+    measureListening(session.measurement, progress, isPlaying && !playbackError, Date.now());
+    session.duration = duration;
+    const seconds = session.measurement.seconds;
+    if (!session.historyLogged && seconds >= 2 && seconds >= Math.min(30, duration > 0 ? duration / 2 : 30)) {
+      session.historyLogged = true;
+      void logPlayback(session.track);
+    }
+    if (seconds - session.reportedSeconds >= 30 || (!isPlaying && seconds > session.reportedSeconds)) {
+      sendListening('progress');
+    }
+  }, [progress, duration, isPlaying, playbackError, currentTrack, token]);
+
+  useEffect(() => {
+    listeningSession.current = null;
+    queueGeneration.current += 1;
+    setDismissedIds(new Set());
+    setQueue([]);
+    setQueueIndex(-1);
+    setCurrentTrack(null);
+    setIsPlaying(false);
+    if (!token) return;
+    let cancelled = false;
+    fetch(`${API_BASE}/recommendations/dismissed`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => res.ok ? res.json() : [])
+      .then(ids => { if (!cancelled) setDismissedIds(new Set(ids)); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [token]);
+
+  const toggleDismissed = async (track: any) => {
+    if (!token) return;
+    const id = track.id || track.video_id;
+    const wasDismissed = dismissedIds.has(id);
+    setDismissedIds(previous => {
+      const updated = new Set(previous);
+      if (wasDismissed) updated.delete(id); else updated.add(id);
+      return updated;
+    });
+    try {
+      const res = await fetch(`${API_BASE}/recommendations/dismissed/${encodeURIComponent(id)}`, {
+        method: wasDismissed ? 'DELETE' : 'PUT', headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Preference not saved');
+      if (currentToken.current === token) setRecommendationsRevision(value => value + 1);
+    } catch {
+      if (currentToken.current !== token) return;
+      setDismissedIds(previous => {
+        const updated = new Set(previous);
+        if (wasDismissed) updated.add(id); else updated.delete(id);
+        return updated;
+      });
+      Alert.alert('Preference not saved', 'Please try again.');
+    }
+  };
+
   const playTrack = (track: any, tracksList: any[] = []) => {
-    // Normalize: ensure the track always has a video_id
-    const videoId = track.id || track.video_id || track.videoId;
-    const normalizedTrack = { ...track, id: videoId, video_id: videoId };
+    const normalizedTrack = normalizeTrack(track);
+    if (!normalizedTrack || !isPlayableMusicTrack(normalizedTrack)) return;
+    sendListening(playbackError ? 'progress' : 'skip');
+    queueGeneration.current += 1;
+    beginListening(normalizedTrack);
+    setPlaybackAttempt(value => value + 1);
+    setPlaybackError(null);
     
     setCurrentTrack(normalizedTrack);
     setIsPlaying(true);
-    logPlayback(normalizedTrack);
+    setProgress(0);
+    setDuration(0);
 
     if (tracksList.length > 0) {
-      // Normalize all tracks in the queue too
-      const normalizedList = tracksList.map(t => {
-        const vid = t.id || t.video_id || t.videoId;
-        return { ...t, id: vid, video_id: vid };
-      });
-      setQueue(normalizedList);
-      const idx = normalizedList.findIndex(t => t.id === videoId);
+      const normalizedList = normalizePlayableQueue(tracksList);
+      const queueWithTrack = normalizedList.some(t => t.id === normalizedTrack.id)
+        ? normalizedList
+        : [normalizedTrack, ...normalizedList];
+      setQueue(queueWithTrack);
+      const idx = queueWithTrack.findIndex(t => t.id === normalizedTrack.id);
       setQueueIndex(idx >= 0 ? idx : 0);
     } else {
       setQueue([normalizedTrack]);
@@ -178,32 +349,75 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   };
 
   const togglePlay = () => {
-    setIsPlaying(!isPlaying);
+    if (playbackError) {
+      setPlaybackError(null);
+      setPlaybackAttempt(value => value + 1);
+      setIsPlaying(true);
+    } else {
+      setIsPlaying(!isPlaying);
+    }
   };
 
-  const nextTrack = () => {
+  const nextTrack = (reason?: unknown) => {
     if (queue.length === 0) return;
-    let nextIdx = queueIndex + 1;
-    if (nextIdx >= queue.length) {
-      nextIdx = 0; // Wrap around
+    sendListening(reason === 'complete' ? 'complete' : reason === 'error' || playbackError ? 'progress' : 'skip');
+
+    if (isShuffling && queue.length > 1) {
+      const playableIndexes = queue
+        .map((track, index) => ({ track, index }))
+        .filter(({ track, index }) => index !== queueIndex && isPlayableMusicTrack(track) && !dismissedIds.has(track.id));
+
+      if (playableIndexes.length > 0) {
+        const randomPick = playableIndexes[Math.floor(Math.random() * playableIndexes.length)];
+        setPlaybackAttempt(value => value + 1);
+        setQueueIndex(randomPick.index);
+        setCurrentTrack(randomPick.track);
+        setIsPlaying(true);
+        setProgress(0);
+        setDuration(0);
+        beginListening(randomPick.track);
+        return;
+      }
     }
-    setQueueIndex(nextIdx);
-    setCurrentTrack(queue[nextIdx]);
-    logPlayback(queue[nextIdx]);
+
+    for (let offset = 1; offset <= queue.length; offset += 1) {
+      const nextIdx = (queueIndex + offset) % queue.length;
+      const next = queue[nextIdx];
+      if (!isPlayableMusicTrack(next) || dismissedIds.has(next.id)) continue;
+      setPlaybackAttempt(value => value + 1);
+
+      setQueueIndex(nextIdx);
+      setCurrentTrack(next);
+      setIsPlaying(true);
+      setProgress(0);
+      setDuration(0);
+      beginListening(next);
+      return;
+    }
+    setIsPlaying(false);
   };
 
   const prevTrack = () => {
     if (queue.length === 0) return;
-    let prevIdx = queueIndex - 1;
-    if (prevIdx < 0) {
-      prevIdx = queue.length - 1; // Wrap around
+    sendListening(playbackError ? 'progress' : 'skip');
+    for (let offset = 1; offset <= queue.length; offset += 1) {
+      const prevIdx = (queueIndex - offset + queue.length) % queue.length;
+      const previous = queue[prevIdx];
+      if (!isPlayableMusicTrack(previous) || dismissedIds.has(previous.id)) continue;
+      setPlaybackAttempt(value => value + 1);
+
+      setQueueIndex(prevIdx);
+      setCurrentTrack(previous);
+      setIsPlaying(true);
+      setProgress(0);
+      setDuration(0);
+      beginListening(previous);
+      return;
     }
-    setQueueIndex(prevIdx);
-    setCurrentTrack(queue[prevIdx]);
-    logPlayback(queue[prevIdx]);
   };
 
   const seekTo = (seconds: number) => {
+    if (listeningSession.current) resetListeningPosition(listeningSession.current.measurement, seconds, Date.now());
     if (playerRef.current) {
       try {
         playerRef.current.seekTo(seconds, true);
@@ -222,33 +436,50 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     setIsShuffling(!isShuffling);
   };
 
-  // Autoplay recommendations pipeline
-  const fetchAutoplayQueue = async (trackId: string) => {
-    try {
-      const res = await fetch(`${API_BASE}/music/recommendations/${trackId}`);
-      if (res.ok) {
-        const recommendations = await res.json();
-        if (recommendations && recommendations.length > 0) {
-          // Append recommendations to queue
-          setQueue(prev => {
-            const currentQueueIds = new Set(prev.map(t => t.id || t.video_id));
-            const newTracks = recommendations.filter((t: any) => !currentQueueIds.has(t.id || t.video_id));
-            return [...prev, ...newTracks];
-          });
-        }
-      }
-    } catch (err) {
-      console.error("Failed to load autoplay queue:", err);
+  const setSleepTimer = (minutes: number | null) => {
+    if (!minutes) {
+      setSleepTimerMinutes(null);
+      setSleepTimerEndsAt(null);
+      return;
     }
+
+    setSleepTimerMinutes(minutes);
+    setSleepTimerEndsAt(Date.now() + minutes * 60 * 1000);
   };
 
+  // Refill near the end, using this user's profile and the active queue as exclusions.
   useEffect(() => {
-    if (currentTrack) {
-      const trackId = currentTrack.id || currentTrack.video_id;
-      // Fetch next suggestions when playing
-      fetchAutoplayQueue(trackId);
+    if (!currentTrack || !token) return;
+    if (queueIndex > 40) {
+      const removeCount = queueIndex - 20;
+      setQueue(previous => previous.slice(removeCount));
+      setQueueIndex(20);
+      return;
     }
-  }, [currentTrack]);
+    if (queueRef.current.length - queueIndex > 6) return;
+    const controller = new AbortController();
+    const generation = queueGeneration.current;
+    const excluded = queueRef.current.map(track => track.id).slice(-150).join(',');
+    const trackId = currentTrack.id || currentTrack.video_id;
+    fetch(`${API_BASE}/recommendations/autoplay/${encodeURIComponent(trackId)}?exclude=${encodeURIComponent(excluded)}`, {
+      headers: { Authorization: `Bearer ${token}` }, signal: controller.signal,
+    })
+      .then(res => res.ok ? res.json() : [])
+      .then(tracks => {
+        if (controller.signal.aborted || generation !== queueGeneration.current || currentToken.current !== token) return;
+        setQueue(previous => {
+          const ids = new Set(previous.map(track => track.id));
+          const additions = normalizePlayableQueue(tracks).filter(track => {
+            if (ids.has(track.id) || dismissedIds.has(track.id)) return false;
+            ids.add(track.id);
+            return true;
+          });
+          return [...previous, ...additions];
+        });
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [currentTrack, token, queueIndex, recommendationsRevision, dismissedIds]);
 
   return (
     <AudioContext.Provider
@@ -256,6 +487,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         currentTrack,
         setCurrentTrack,
         isPlaying,
+        nativePlayback,
+        playbackError,
+        setPlaybackError,
         setIsPlaying,
         queue,
         setQueue,
@@ -269,6 +503,8 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         setDuration,
         isLooping,
         isShuffling,
+        sleepTimerMinutes,
+        sleepTimerEndsAt,
         togglePlay,
         playTrack,
         nextTrack,
@@ -276,7 +512,11 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         seekTo,
         toggleLoop,
         toggleShuffle,
+        setSleepTimer,
         favorites,
+        dismissedIds,
+        toggleDismissed,
+        recommendationsRevision,
         toggleFavorite,
         history,
         playerRef,
@@ -289,6 +529,18 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       }}
     >
       {children}
+      {nativePlayback && currentTrack && token && (
+        <NativeAudioPlayer
+          track={currentTrack}
+          token={token}
+          attempt={playbackAttempt}
+          audio={{
+            isPlaying, isLooping, volume, progress, playerRef,
+            setProgress, setDuration, setIsPlaying, setPlaybackError,
+            sleepTimerEndsAt, setSleepTimer, nextTrack,
+          }}
+        />
+      )}
     </AudioContext.Provider>
   );
 }

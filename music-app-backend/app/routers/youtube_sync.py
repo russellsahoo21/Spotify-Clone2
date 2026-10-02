@@ -8,6 +8,7 @@ from app.database import SessionLocal
 from app.models.playlist import Playlist
 from app.models.playlist_song import PlaylistSong
 from app.models.user import User
+from app.services.track_filter import is_music_track
 from app.utils.dependencies import get_current_user
 
 router = APIRouter()
@@ -78,6 +79,8 @@ def import_youtube_playlist(
         raw_tracks = raw_playlist.get("tracks", [])
         imported_count = 0
         for track in raw_tracks:
+            if not is_music_track(track):
+                continue
             video_id = track.get("videoId")
             if not video_id:
                 continue

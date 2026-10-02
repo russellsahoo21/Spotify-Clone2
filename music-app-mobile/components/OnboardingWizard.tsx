@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Modal, ActivityIndicator, Image, TextInput } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-import { Platform } from 'react-native';
 import { API_BASE } from '../constants/api';
 import { X, Search, Check, Sparkles } from 'lucide-react-native';
 
@@ -333,7 +332,7 @@ export default function OnboardingWizard({ visible, token, onComplete, onClose }
                   })}
                   {filteredArtists.length === 0 && (
                     <View className="w-full py-8 items-center">
-                      <Text className="text-zinc-500 text-xs">No artists match "{artistSearch}"</Text>
+                      <Text className="text-zinc-500 text-xs">No artists match &quot;{artistSearch}&quot;</Text>
                     </View>
                   )}
                 </View>

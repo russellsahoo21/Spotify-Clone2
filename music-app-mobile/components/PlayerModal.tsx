@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, TouchableOpacity, Modal, Image, ScrollView, Dimensions, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Image, ScrollView, Dimensions } from 'react-native';
 import { useAudio } from '../context/AudioContext';
-import { ChevronDown, Play, Pause, SkipForward, SkipBack, Heart, Shuffle, Repeat, Music, Tv } from 'lucide-react-native';
+import { ChevronDown, Play, Pause, SkipForward, SkipBack, Heart, Shuffle, Repeat, Music, Tv, Timer, ThumbsDown } from 'lucide-react-native';
 import YoutubePlayer from 'react-native-youtube-iframe';
 import { API_BASE } from '../constants/api';
 
@@ -10,6 +10,8 @@ const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 export default function PlayerModal() {
   const {
     currentTrack,
+    nativePlayback,
+    playbackError,
     isPlaying,
     togglePlay,
     nextTrack,
@@ -22,18 +24,24 @@ export default function PlayerModal() {
     isShuffling,
     toggleShuffle,
     favorites,
+    dismissedIds,
+    toggleDismissed,
     toggleFavorite,
     playerOpen,
     setPlayerOpen,
     isVideoMode,
     setIsVideoMode,
-    playerRef
+    playerRef,
+    queue,
+    queueIndex,
+    sleepTimerMinutes,
+    sleepTimerEndsAt,
+    setSleepTimer
   } = useAudio();
 
   const [playerReady, setPlayerReady] = useState(false);
 
   const onPlayerReady = useCallback(() => {
-    console.log('YoutubePlayer: READY');
     setPlayerReady(true);
   }, []);
 
@@ -46,6 +54,7 @@ export default function PlayerModal() {
   // Fetch lyrics when track changes
   useEffect(() => {
     if (!currentTrack) return;
+    setPlayerReady(false);
     const trackId = currentTrack.id || currentTrack.video_id;
 
     async function getLyrics() {
@@ -93,6 +102,9 @@ export default function PlayerModal() {
   };
 
   const progressPercent = duration > 0 ? (progress / duration) * 100 : 0;
+  const sleepTimerRemaining = sleepTimerEndsAt
+    ? Math.max(1, Math.ceil((sleepTimerEndsAt - Date.now()) / 60000))
+    : null;
 
   const handleScrollToLyrics = () => {
     setShowLyricsCard(true);
@@ -146,7 +158,8 @@ export default function PlayerModal() {
           contentContainerStyle={{ paddingBottom: 40 }}
         >
           <View className="items-center justify-center my-6 relative" style={{ width: screenWidth, height: isVideoMode ? (screenWidth - 48) * 9 / 16 : screenWidth - 48 }}>
-            {/* YouTube Player Container - always mounted to prevent playback from stopping */}
+            {/* Native Song playback lives in AudioProvider; video keeps its own player. */}
+            {!nativePlayback && (
             <View
               style={
                 isVideoMode
@@ -166,6 +179,7 @@ export default function PlayerModal() {
               }
             >
               <YoutubePlayer
+                key={currentTrack.id || currentTrack.video_id}
                 ref={playerRef}
                 height={(screenWidth - 48) * 9 / 16}
                 width={screenWidth - 48}
@@ -183,20 +197,23 @@ export default function PlayerModal() {
                   androidLayerType: 'hardware',
                   allowsBackgroundMediaPlayback: true,
                 }}
-                onReady={onPlayerReady}
-                onError={(e: any) => console.log('YoutubePlayer Error:', e)}
+                onReady={() => {
+                  if (progress > 0) playerRef.current?.seekTo(progress, true);
+                  onPlayerReady();
+                }}
+                onError={() => nextTrack('error')}
                 onChangeState={(state: any) => {
-                  console.log('YoutubePlayer State:', state);
                   if (state === 'ended') {
                     if (isLooping) {
                       playerRef.current?.seekTo(0, true);
                     } else {
-                      nextTrack();
+                      nextTrack('complete');
                     }
                   }
                 }}
               />
             </View>
+            )}
 
             {/* Cover image shown when in audio mode */}
             {!isVideoMode && (
@@ -216,7 +233,24 @@ export default function PlayerModal() {
               <Text className="text-zinc-400 text-sm font-sans mt-1" numberOfLines={1}>
                 {trackArtist}
               </Text>
+              <Text className="text-zinc-600 text-[10px] font-bold font-sans mt-2 uppercase">
+                {queue.length > 0 ? `${queueIndex + 1} of ${queue.length} in queue` : 'Single track'}
+              </Text>
+              {playbackError && (
+                <Text accessibilityRole="alert" className="text-red-400 text-xs mt-2">
+                  {playbackError}
+                </Text>
+              )}
             </View>
+            <TouchableOpacity
+              onPress={() => toggleDismissed(currentTrack)}
+              accessibilityRole="button"
+              accessibilityLabel={dismissedIds.has(currentTrack.id) ? 'Allow recommendations for this song' : 'Not interested in this song'}
+              accessibilityState={{ selected: dismissedIds.has(currentTrack.id) }}
+              className="p-2"
+            >
+              <ThumbsDown size={20} color={dismissedIds.has(currentTrack.id) ? '#d91b29' : '#a1a1aa'} />
+            </TouchableOpacity>
             <TouchableOpacity onPress={() => toggleFavorite(currentTrack)} className="p-2">
               <Heart size={24} color={isLiked ? '#d91b29' : '#fff'} fill={isLiked ? '#d91b29' : 'transparent'} />
             </TouchableOpacity>
@@ -283,6 +317,38 @@ export default function PlayerModal() {
             <TouchableOpacity onPress={toggleLoop} className="p-2">
               <Repeat size={20} color={isLooping ? '#d91b29' : '#a1a1aa'} />
             </TouchableOpacity>
+          </View>
+
+          <View className="mx-6 mb-6 p-3 bg-zinc-950 border border-zinc-900 rounded-2xl">
+            <View className="flex-row items-center justify-between mb-3">
+              <View className="flex-row items-center gap-2">
+                <Timer size={15} color={sleepTimerMinutes ? '#d91b29' : '#a1a1aa'} />
+                <Text className="text-zinc-300 text-xs font-extrabold font-sans">Sleep timer</Text>
+              </View>
+              <Text className="text-zinc-500 text-[10px] font-bold font-sans">
+                {sleepTimerRemaining ? `${sleepTimerRemaining} min left` : 'Off'}
+              </Text>
+            </View>
+
+            <View className="flex-row gap-2">
+              {[15, 30, 60].map((minutes) => (
+                <TouchableOpacity
+                  key={minutes}
+                  onPress={() => setSleepTimer(minutes)}
+                  className={`flex-1 py-2 rounded-xl border ${sleepTimerMinutes === minutes ? 'bg-red-650 border-red-650' : 'bg-zinc-900 border-zinc-800'}`}
+                >
+                  <Text className={`text-center text-[10px] font-extrabold font-sans ${sleepTimerMinutes === minutes ? 'text-white' : 'text-zinc-400'}`}>
+                    {minutes}m
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity
+                onPress={() => setSleepTimer(null)}
+                className="flex-1 py-2 rounded-xl border bg-zinc-900 border-zinc-800"
+              >
+                <Text className="text-center text-[10px] font-extrabold font-sans text-zinc-400">Off</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {!showLyricsCard && (

@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Image, ActivityIndicator, Alert, TextInput, Platform } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, Image, ActivityIndicator, Alert, TextInput } from 'react-native';
 import { useAudio } from '../../context/AudioContext';
 import { useAuth } from '../../context/AuthContext';
 import { useRouter } from 'expo-router';
-import { Play, Plus, Heart, History, ListMusic, Trash } from 'lucide-react-native';
+import { Plus, Heart, History, ListMusic, Trash } from 'lucide-react-native';
 import { API_BASE } from '../../constants/api';
 
 export default function LibraryScreen() {
@@ -20,7 +20,7 @@ export default function LibraryScreen() {
   const [showCreateInput, setShowCreateInput] = useState(false);
 
   // Fetch playlists
-  const fetchPlaylists = async () => {
+  const fetchPlaylists = useCallback(async () => {
     if (!token) return;
     setPlaylistsLoading(true);
     try {
@@ -36,7 +36,7 @@ export default function LibraryScreen() {
     } finally {
       setPlaylistsLoading(false);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     if (activeTab === 'playlists') {
@@ -46,7 +46,7 @@ export default function LibraryScreen() {
     } else if (activeTab === 'history') {
       fetchHistory();
     }
-  }, [activeTab, token]);
+  }, [activeTab, token, fetchPlaylists, fetchFavorites, fetchHistory]);
 
   const handleCreatePlaylist = async () => {
     if (!newPlaylistName.trim()) {

@@ -7,6 +7,7 @@ bcrypt
 python-jose[cryptography]
 httpx
 ytmusicapi
+yt-dlp[default]==2026.8.19
 psycopg2-binary
 email-validator
 

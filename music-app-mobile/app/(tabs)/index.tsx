@@ -1,17 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, Dimensions, Platform } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, RefreshControl } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import { useAudio } from '../../context/AudioContext';
 import { Sparkles, Music, Library } from 'lucide-react-native';
 import { API_BASE } from '../../constants/api';
 
-const { width: screenWidth } = Dimensions.get('window');
-
 const MOODS = ['Chill', 'Happy', 'Energetic', 'Focus', 'Sad'];
 
 export default function HomeScreen() {
   const { token, logout, user, openPersonalize } = useAuth();
-  const { playTrack } = useAudio();
+  const { playTrack, dismissedIds, recommendationsRevision } = useAudio();
 
   // Feed states
   const [selectedMood, setSelectedMood] = useState('Chill');
@@ -22,6 +20,12 @@ export default function HomeScreen() {
   const [feedPage, setFeedPage] = useState(1);
   const [feedLoading, setFeedLoading] = useState(false);
   const [hasMoreFeed, setHasMoreFeed] = useState(true);
+  const [feedError, setFeedError] = useState<string | null>(null);
+  const [refreshIndex, setRefreshIndex] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const feedId = useRef<string | null>(null);
+  const feedGeneration = useRef(0);
+  const loadingMore = useRef(false);
 
   // Dynamic charts states (Trending)
   const [trending, setTrending] = useState<any[]>([]);
@@ -49,46 +53,59 @@ export default function HomeScreen() {
   }, [token]);
 
   // Helper to fetch feed page
-  const fetchFeedPage = async (pageNum: number) => {
-    try {
-      const res = await fetch(`${API_BASE}/explore/infinite-feed?page=${pageNum}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch (err) {
-      console.error(`Error fetching feed page ${pageNum}:`, err);
-    }
-    return null;
-  };
+  const fetchFeedPage = useCallback(async (pageNum: number, id?: string | null, signal?: AbortSignal) => {
+    const params = id ? `&feed_id=${encodeURIComponent(id)}` : '&refresh=true';
+    const res = await fetch(`${API_BASE}/explore/infinite-feed?page=${pageNum}${params}`, {
+      headers: { Authorization: `Bearer ${token}` }, signal,
+    });
+    if (!res.ok) throw new Error(res.status === 410 ? 'Your feed has expired.' : 'Recommendations unavailable.');
+    return res.json();
+  }, [token]);
 
   // Load initial feed
   useEffect(() => {
-    if (!token) return;
+    const controller = new AbortController();
+    const generation = ++feedGeneration.current;
+    loadingMore.current = false;
+    feedId.current = null;
+    setFeedSections([]);
+    setFeedPage(1);
+    setHasMoreFeed(true);
+    setFeedError(null);
+    if (!token) {
+      setFeedLoading(false);
+      setRefreshing(false);
+      return;
+    }
     async function loadInitialFeed() {
       setFeedLoading(true);
+      setRefreshing(true);
       try {
-        const pages = await Promise.all([
-          fetchFeedPage(1),
-          fetchFeedPage(2),
-          fetchFeedPage(3),
-          fetchFeedPage(4),
-          fetchFeedPage(5)
-        ]);
-        const valid = pages.filter(Boolean);
-        setFeedSections(valid);
-        setFeedPage(6);
-      } catch (err) {
-        console.error("Failed to load initial feed:", err);
+        const first = await fetchFeedPage(1, null, controller.signal);
+        if (controller.signal.aborted || generation !== feedGeneration.current) return;
+        feedId.current = first.feed_id;
+        setFeedSections([first]);
+        setFeedPage(2);
+        setHasMoreFeed(first.has_more);
+        if (first.has_more) {
+          const second = await fetchFeedPage(2, first.feed_id, controller.signal);
+          if (controller.signal.aborted || generation !== feedGeneration.current) return;
+          setFeedSections([first, second]);
+          setFeedPage(3);
+          setHasMoreFeed(second.has_more);
+        }
+      } catch (err: any) {
+        if (!controller.signal.aborted) setFeedError(err.message || 'Recommendations unavailable.');
       } finally {
-        setFeedLoading(false);
+        if (!controller.signal.aborted && generation === feedGeneration.current) {
+          setFeedLoading(false);
+          setRefreshing(false);
+        }
       }
     }
     loadInitialFeed();
-  }, [token]);
+    return () => controller.abort();
+  }, [token, fetchFeedPage, refreshIndex, recommendationsRevision, user?.artists, user?.genres]);
 
   // Fetch mood-based songs
   useEffect(() => {
@@ -112,16 +129,27 @@ export default function HomeScreen() {
 
   // Scroll load-more handler
   const loadMoreContent = async () => {
-    if (feedLoading || !hasMoreFeed || !token) return;
+    if (feedLoading || loadingMore.current || !hasMoreFeed || !token || !feedId.current || feedError) return;
+    const generation = feedGeneration.current;
+    loadingMore.current = true;
     setFeedLoading(true);
-    const nextSection = await fetchFeedPage(feedPage);
-    if (nextSection && nextSection.tracks && nextSection.tracks.length > 0) {
-      setFeedSections(prev => [...prev, nextSection]);
-      setFeedPage(prev => prev + 1);
-    } else {
-      setHasMoreFeed(false);
+    try {
+      const nextSection = await fetchFeedPage(feedPage, feedId.current);
+      if (generation !== feedGeneration.current) return;
+      setFeedSections(prev => {
+        const ids = new Set(prev.flatMap(section => section.tracks.map((track: any) => track.id)));
+        return [...prev, { ...nextSection, tracks: nextSection.tracks.filter((track: any) => !ids.has(track.id)) }];
+      });
+      setFeedPage(value => value + 1);
+      setHasMoreFeed(nextSection.has_more);
+    } catch (err: any) {
+      if (generation === feedGeneration.current) setFeedError(err.message || 'Recommendations unavailable.');
+    } finally {
+      if (generation === feedGeneration.current) {
+        loadingMore.current = false;
+        setFeedLoading(false);
+      }
     }
-    setFeedLoading(false);
   };
 
   const handleScroll = (event: any) => {
@@ -138,6 +166,7 @@ export default function HomeScreen() {
       showsVerticalScrollIndicator={false}
       onScroll={handleScroll}
       scrollEventThrottle={400}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => setRefreshIndex(value => value + 1)} tintColor="#d91b29" />}
       contentContainerStyle={{ paddingBottom: 180, paddingTop: 60 }}
     >
 
@@ -252,7 +281,8 @@ export default function HomeScreen() {
       )}
 
       {/* Personalized dynamic infinite Scroll blocks */}
-      {feedSections.map((section, sIdx) => {
+      {feedSections.map((rawSection, sIdx) => {
+        const section = { ...rawSection, tracks: rawSection.tracks?.filter((track: any) => !dismissedIds.has(track.id)) };
         if (!section || !section.tracks || section.tracks.length === 0) return null;
 
         return (
@@ -265,7 +295,7 @@ export default function HomeScreen() {
             {section.layout === 'quick-picks' ? (
               // Quick Picks Grid
               <View className="px-6 flex-row flex-wrap justify-between">
-                {section.tracks.slice(0, 6).map((t: any, idx: number) => (
+                {section.tracks.map((t: any, idx: number) => (
                   <TouchableOpacity
                     key={t.id || idx}
                     onPress={() => playTrack(t, section.tracks)}
@@ -294,6 +324,7 @@ export default function HomeScreen() {
                     />
                     <Text className="text-white text-[10px] font-bold mt-2 font-sans truncate" numberOfLines={1}>{t.title}</Text>
                     <Text className="text-zinc-500 text-[8px] font-sans mt-0.5 truncate" numberOfLines={1}>{t.artist}</Text>
+                    {t.reason && <Text className="text-zinc-400 text-[10px] font-sans mt-1" numberOfLines={2}>{t.reason}</Text>}
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -302,6 +333,14 @@ export default function HomeScreen() {
         );
       })}
 
+      {feedError && (
+        <View className="px-6 py-4 flex-row items-center justify-between">
+          <Text accessibilityRole="alert" className="text-zinc-400 text-xs flex-1 mr-3">{feedError}</Text>
+          <TouchableOpacity onPress={() => setRefreshIndex(value => value + 1)} accessibilityRole="button">
+            <Text className="text-white text-xs font-bold">Retry</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       {feedLoading && (
         <ActivityIndicator size="small" color="#d91b29" className="mt-4 mb-8" />
       )}

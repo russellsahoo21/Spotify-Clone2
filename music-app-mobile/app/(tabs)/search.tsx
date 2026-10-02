@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, ScrollView, TouchableOpacity, Image, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, TextInput, ScrollView, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
 import { useAudio } from '../../context/AudioContext';
 import { Search as SearchIcon, Music, Disc, User, X } from 'lucide-react-native';
 import { API_BASE } from '../../constants/api';

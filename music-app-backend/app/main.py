@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import CORS_ORIGINS
 from app.database import Base, engine
-from app.routers import auth, explore, library, playlists, search, songs, youtube_sync
+from app.routers import auth, explore, library, playlists, recommendations, search, songs, stream, youtube_sync
 
 app = FastAPI(title="StreamYT Unified API Gateway")
 
@@ -41,6 +41,8 @@ except Exception as e:
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(search.router, prefix="/api/music", tags=["music"])
 app.include_router(songs.router, prefix="/api/music", tags=["songs"])
+app.include_router(stream.router, prefix="/api/music", tags=["stream"])
+app.include_router(recommendations.router, prefix="/api/recommendations", tags=["recommendations"])
 app.include_router(playlists.router, prefix="/api/playlists", tags=["playlists"])
 app.include_router(library.router, prefix="/api/library", tags=["library"])
 app.include_router(explore.router, prefix="/api/explore", tags=["explore"])

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 from ytmusicapi import YTMusic
+from app.services.track_filter import is_music_track
 
 router = APIRouter()
 yt = YTMusic()
@@ -12,6 +13,8 @@ def search_music(q: str = Query(..., min_length=1)):
         results = yt.search(query=q, filter="songs")
         formatted_results = []
         for item in results:
+            if not is_music_track(item):
+                continue
             video_id = item.get("videoId")
             if not video_id:
                 continue

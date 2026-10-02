@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models.favorite import Favorite
 from app.models.history import History
+from app.models.recommendation import ListeningSession, RecommendationFeed
 from app.models.user import User
 from app.schemas.library import (
     FavoriteCreate,
@@ -137,5 +138,7 @@ def clear_history(
 ):
     """Clear all play history for the current user."""
     db.query(History).filter(History.owner_id == current_user.id).delete()
+    db.query(ListeningSession).filter(ListeningSession.owner_id == current_user.id).delete()
+    db.query(RecommendationFeed).filter(RecommendationFeed.owner_id == current_user.id).delete()
     db.commit()
     return {"cleared": True}
