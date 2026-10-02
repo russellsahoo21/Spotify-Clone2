@@ -9,5 +9,6 @@ httpx
 ytmusicapi
 yt-dlp[default]==2026.8.19
 psycopg2-binary
+psycopg[binary]>=3.2.10,<4
 email-validator
 
